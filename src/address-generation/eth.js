@@ -1,6 +1,8 @@
 import AppEth from "@ledgerhq/hw-app-eth";
 import TransportU2F from "@ledgerhq/hw-transport-u2f";
 import TransportNodeHid from "@ledgerhq/hw-transport-node-hid";
+//import EthereumTx from 'ethereumjs-tx'
+const EthereumTx = require('ethereumjs-tx')
 
 const BASE_PATH = "44'/60'/0'/0/"
 
@@ -15,21 +17,25 @@ switch(operation) {
     break
   case "sign-tx":
     let addressPath = args['addr-path']
-    let rawTx       = args['raw-tx']
-    signTransaction(addressPath, rawTx)
+    let txParams    = args['tx-params']
+    signTransaction(addressPath, txParams)
     break
   default:
     printUsage(process.argv);
 }
 
-async function genAddresses(nb_addresses) {
+async function getClient() {
   let eth;
   try {
     let transport = await TransportNodeHid.create()
-    eth = new AppEth(transport)
+    return new AppEth(transport)
   } catch(e) {
     console.log(e)
   }
+}
+
+async function genAddresses(nb_addresses) {
+  let eth = await getClient()
 
   // CSV header
   console.log("path, publicKey, address")
@@ -52,16 +58,54 @@ async function genAddresses(nb_addresses) {
   }
 }
 
-async function signTransaction(addressPath, rawTransaction) {
+function generateRawTransaction(txParams) {
+  /*
+  const txParams = {
+    nonce: '0x01',
+    gasPrice: '0x04e3b29200', 
+    gasLimit: '0x5208',
+    to: '0x1B8d14D5F3f0Ad4e347F4662EE3741E29D7DbAA6',
+    value: '0x0dc599702e770000', 
+    data: '',
+    // EIP 155 (chainId): mainnet: 1, ropsten: 3
+    chainId: 1
+  }
+  */
+
+  if(!txParams['to'])
+    throw 'Missing parameter "to" in transaction params'
+
+  let tx = new EthereumTx(txParams)
+  console.log(JSON.stringify(tx))
+  return tx.serialize()
+}
+
+async function signTransaction(addressPath, txParamsStr) {
   try {
+    let eth = await getClient()
+
     console.log("Trying to sign the following TX:")
+    console.log(txParamsStr)
+
+    let txParams = JSON.parse(txParamsStr)
+    console.log("Parsed TX params:")
+    console.log(txParams)
+
+    let rawTransaction = generateRawTransaction(txParams)
+    console.log("Raw Transaction:")
     console.log(rawTransaction)
-    let [s, v, r] = await eth.signTransaction(addressPath, rawTransaction)
-    console.log(s)
-    console.log(v)
-    console.log(r)
+
+    let {v, r, s} = await eth.signTransaction(addressPath, rawTransaction)
+    let signedTransaction = v + r + s
+
+    console.log('--- Signed TX ---')
+    console.log(signedTransaction)
+    console.log('-----------------')
   } catch(err) {
-    console.log(JSON.stringify(err))
+    console.log('------------------------------')
+    console.log('--- TRANSACTION NOT SIGNED ---')
+    console.log('------------------------------')
+    console.log(err)
     console.log('-')
   }
 }
@@ -78,6 +122,6 @@ function printUsage(argv) {
   console.log('')
   console.log('  sign-tx parameters:')
   console.log("  --addr-path=PATH       (sign-tx)  Path of private key to use")
-  console.log("  --raw-tx=RAWTX         (sign-tx)  Raw transaction")
+  console.log("  --tx-params=TXPARAMS   (sign-tx)  TX params")
 }
 
