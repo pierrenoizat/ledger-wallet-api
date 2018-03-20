@@ -1,0 +1,26 @@
+{
+  "private": true,
+  "name": "@ledgerhq/pggoexample",
+  "version": "4.6.0",
+  "main": "index.js",
+  "license": "NONE",
+  "dependencies": {
+    "@ledgerhq/hw-app-btc": "^4.6.0",
+    "@ledgerhq/hw-app-eth": "^4.6.0",
+    "@ledgerhq/hw-transport-node-hid": "^4.6.0",
+    "@ledgerhq/hw-transport-u2f": "^4.6.0",
+    "minimist": "^1.2.0",
+    "fs": "latest"
+  },
+  "devDependencies": {
+    "babel-cli": "^6.26.0",
+    "babel-plugin-console-log": "0.0.3",
+    "babel-preset-env": "^1.6.1",
+    "flow-bin": "^0.66.0",
+    "flow-typed": "^2.3.0"
+  },
+  "scripts": {
+    "gen-eth": "babel-node ./src/address-generation/eth.js",
+    "gen-btc": "babel-node ./src/address-generation/btc.js"
+  }
+}

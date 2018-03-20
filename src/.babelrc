@@ -1,0 +1,34 @@
+{
+  "presets": ["env"],
+  "plugins": [
+    [
+      'console-log',
+      {
+        effects: [
+          {
+            // Custom effect name
+            pattern: 'bigblue',
+            // Explicitly list styles
+            styles: 'font-size: x-large; color: blue'
+          },
+          {
+            // Custom effect name
+            pattern: 'tinyred',
+            // Use console.warn instead of console.log
+            method: 'warn',
+            // Combine styles from other effects
+            effects: [ 'xxsmall', 'red' ]
+          },
+          {
+            // Add effect to built-in console method
+            pattern: 'debug',
+            // Combine styles from other effects
+            effects: [ 'red', 'xlarge' ],
+            // Add addtional styles
+            styles: 'padding: 3px; font-weight: bold'
+          }
+        ]
+      }
+    ]
+  ]
+}
