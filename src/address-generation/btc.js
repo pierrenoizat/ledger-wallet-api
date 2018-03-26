@@ -3,8 +3,8 @@ import AppBtc from "@ledgerhq/hw-app-btc"
 import TransportNodeHid from "@ledgerhq/hw-transport-node-hid"
 import Wallet from './wallet'
 import Bitcore from "bitcore-lib"
-//const BufferWriter = require('buffer-utils').BufferWriter
 const BufferWriter = Bitcore.encoding.BufferWriter
+const Output = Bitcore.Transaction.Output
 
 
 // see https://github.com/satoshilabs/slips/blob/master/slip-0044.md
@@ -28,9 +28,11 @@ class BtcWallet {
         break
 
       case "sign-tx":
-        let addressPath = args['addr-path']
-        let txParams  = args['tx-params']
-        this.signTransaction(addressPath, txParams)
+        const addrPath = args['key-path']
+        const txHex    = args['tx-hex']
+        const txIndex  = args['tx-index']
+        const outputs  = {}; outputs[args['output-addr']] = args['output-amount']
+        this.signTransaction(addrPath, txHex, txIndex, outputs)
         break
       default:
         this.printUsage(process.argv);
@@ -61,6 +63,10 @@ class BtcWallet {
     return client
   }
 
+
+  // Get address and public key from path
+  // IN:  BIP32 path of the address
+  // OUT: address and public key
   async getAddress(path) {
     try {
       let client = await this.getClient()
@@ -98,40 +104,57 @@ class BtcWallet {
     }
   }
 
-  async signTransaction(addressPath, inputs) {
-    let client = await this.getClient()
+  // Sign transaction
+  // IN: 
+  // - keyPath: key of private key which will sign the tx
+  // - txHex:   raw input tx
+  // - txIndex: UTXO index in txHex
+  // - ouputs:  Output hash (format: {addr1: amount1, addr2: amount2, ...} )
+  // OUT: Signed raw tx, in hex format
+  async signTransaction(keyPath, txHex, txIndex, outputs) {
+    try {
+      let client = await this.getClient()
 
-    const txHex = '01000000014ea60aeac5252c14291d428915bd7ccd1bfc4af009f4d4dc57ae597ed0420b71010000008a47304402201f36a12c240dbf9e566bc04321050b1984cd6eaf6caee8f02bb0bfec08e3354b022012ee2aeadcbbfd1e92959f57c15c1c6debb757b798451b104665aa3010569b49014104090b15bde569386734abf2a2b99f9ca6a50656627e77de663ca7325702769986cf26cc9dd7fdea0af432c8e2becc867c932e1b9dd742f2a108997c2252e2bdebffffffff0281b72e00000000001976a91472a5d75c8d2d0565b656a5232703b167d50d5a2b88aca0860100000000001976a9144533f5fb9b4817f713c48f0bfe96b9f50c476c9b88ac00000000'
-    const tx1 = client.splitTransaction(txHex)
+      const txInputs   = [ [client.splitTransaction(txHex), txIndex] ]
+      const keySet     = [ keyPath ]
+      const changePath = undefined
 
-    const txs = [ [tx1, 1] ]
-    const keySet = [ addressPath ]
-    const changePath = undefined
-    const outputScriptHex = '01905f0100000000001976a91472a5d75c8d2d0565b656a5232703b167d50d5a2b88ac'
+      const serializedOutputs = this.serializeOutput(outputs)
+        
+      const rawTx = await client.createPaymentTransactionNew( txInputs, keySet, changePath, serializedOutputs )
 
+      this.log('TXINPT', txInputs)
+      this.log('KEYSET', keySet)
+      this.log('CHANGE', changePath)
+      this.log('OUTPUT', serializedOutputs)
+      this.log('RAW TX', rawTx)
+      
+    } catch(err) {
+      this.log('SignTransaction Error', err)
+    }
+  }
+
+  // Serialize output (to respect Ledger API output format constraints...)
+  // IN:  Array of hash (key: bitcoin address, value: amount to send to this output)
+  // OUT: Serialized part of transaction concerning outputs
+  serializeOutput(addrs_and_amounts) {
     const transaction = new Bitcore.Transaction()
-                                 .to('1Gokm82v6DmtwKEB8AiVhm82hyFSsEvBDK', 1000)
-    const outputs = transaction.toObject().outputs
 
-    const writer = new BufferWriter()
+    for (let addr of Object.keys(addrs_and_amounts))
+      transaction.to(addr, addrs_and_amounts[addr])
+
+    const outputs = transaction.toObject().outputs
+    const writer  = new BufferWriter()
+
     writer.writeVarintNum(outputs.length)
     for (let output of outputs) {
-      console.log(output)
-      (new Bitcore.Output(output)).toBufferWriter(writer)
+      (new Output.fromObject(output)).toBufferWriter(writer)
     }
-    //outputs.toBufferWriter().getContents()
 
-    const serializedOutputs = writer.getContents()
-    console.log('TRANSACTION', serializedOutputs)
-      
-    const rawTx = await client.createPaymentTransactionNew( txs, keySet, changePath, outputScriptHex )
-    this.log('TXINS', txs)
-    this.log('KEYSET', keySet)
-    this.log('CHANGE', changePath)
-    this.log('OUTPUT', outputScriptHex)
-    this.log('RAW TX', rawTx)
+    return writer.toBuffer().toString('hex')
   }
   
+
   log(title, message = '') {
     console.log(`--- ${title} ---`)
     if(message) console.log(message)
@@ -143,7 +166,7 @@ class BtcWallet {
     let command = argv[1]
     console.log(`Usage: ${program_name} ${command} <options>`)
     console.log('')
-    console.log("  --op=OPERATION         Operation, can be gen-addr, get-addr or sign-tx")
+    console.log("  --op=OPERATION         Operation, can be gen-addr, get-addr-from-path or sign-tx")
     console.log('')
     console.log('  gen-addr parameters:')
     console.log("  --nb=N                 Number of generated addresses")
@@ -152,8 +175,11 @@ class BtcWallet {
     console.log("  --path=PATH            BIP32 path of the address")
     console.log('')
     console.log('  sign-tx parameters:')
-    console.log("  --addr-path=PATH       (sign-tx)  Path of private key to use")
-    console.log("  --tx-params=TXPARAMS   (sign-tx)  TX params")
+    console.log("  --key-path=PATH        Path of private key to use")
+    console.log("  --tx-hex=TXHEX         Input transaction (raw, hex formatted)")
+    console.log("  --tx-index=TXINDEX     Index of output to spend")
+    console.log("  --ouput-addr=ADDR      Output address")
+    console.log("  --ouput-amount=AMOUNT  Output amount, in satoshis")
   }
 }
 
