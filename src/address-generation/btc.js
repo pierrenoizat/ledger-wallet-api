@@ -81,7 +81,7 @@ class BtcWallet {
       let client = await this.getClient()
 
       // CSV header
-      console.log("path, publicKey, address")
+      console.log("index, path, publicKey, address")
 
       for (let index of Array(this.nb_addresses).keys()) {
         let path = `${BASE_PATH}${index}`
@@ -89,7 +89,7 @@ class BtcWallet {
           await client.getWalletPublicKey(path).then(function(result) {
             let publicKey = result.publicKey
             let address   = result.bitcoinAddress
-            console.log(`${index},"${path}", ${publicKey}, ${address}`);
+            console.log(`${index}, "${path}", ${publicKey}, ${address}`);
 
           }).catch(function(err) {
             console.log(err.name)
@@ -123,10 +123,8 @@ class BtcWallet {
         
       const rawTx = await client.createPaymentTransactionNew( txInputs, keySet, changePath, serializedOutputs )
 
-      this.log('TXINPT', txInputs)
       this.log('KEYSET', keySet)
       this.log('CHANGE', changePath)
-      this.log('OUTPUT', serializedOutputs)
       this.log('RAW TX', rawTx)
       
     } catch(err) {
