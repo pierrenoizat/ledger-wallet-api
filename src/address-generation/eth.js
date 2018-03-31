@@ -127,7 +127,8 @@ class EthWallet {
   async getNonceForAddress(address) {
     try {
       const api = this.getApi()
-      return await api.getTransactionCount(address)
+console.log(address.address)
+      return await api.getTransactionCount(address.address)
     } catch(err) {
       this.log('getNonceForAddress error', err)
     }
